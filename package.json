@@ -1,0 +1,17 @@
+{
+  "name": "quiz-app-monorepo",
+  "version": "1.0.0",
+  "description": "MERN Quiz App monorepo",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "build": "npm install --prefix server && npm install --prefix client && npm run build --prefix client",
+    "start": "node server/src/index.js",
+    "seed": "npm run seed --prefix server",
+    "seed:admin": "npm run seed:admin --prefix server",
+    "seed:questions": "npm run seed:questions --prefix server",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "test": "npm test --prefix server"
+  }
+}
