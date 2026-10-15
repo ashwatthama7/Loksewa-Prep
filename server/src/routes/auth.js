@@ -70,18 +70,26 @@ router.post(
 );
 
 // ── Google OAuth ─────────────────────────────────────────────────────────────
-router.get(
-  '/google',
-  passport.authenticate('google', { scope: ['profile', 'email'], session: false })
-);
+router.get('/google', (req, res, next) => {
+  if (!passport.hasGoogleAuth) {
+    return res.status(503).json({
+      message: 'Google Sign-in is not configured on this server. Please sign in with email and password.',
+    });
+  }
+  passport.authenticate('google', { scope: ['profile', 'email'], session: false })(req, res, next);
+});
 
-router.get(
-  '/google/callback',
+router.get('/google/callback', (req, res, next) => {
+  if (!passport.hasGoogleAuth) {
+    return res.redirect(`${process.env.CLIENT_URL || ''}/login?error=google_not_configured`);
+  }
   passport.authenticate('google', {
     session: false,
-    failureRedirect: `${process.env.CLIENT_URL}/login?error=oauth`,
-  }),
-  googleCallback
-);
+    failureRedirect: `${process.env.CLIENT_URL || ''}/login?error=oauth`,
+  })(req, res, (err) => {
+    if (err) return next(err);
+    googleCallback(req, res);
+  });
+});
 
 module.exports = router;
