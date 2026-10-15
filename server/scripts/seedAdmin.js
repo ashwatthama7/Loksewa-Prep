@@ -22,7 +22,13 @@ async function seedAdmin() {
     process.exit(1);
   }
 
-  await mongoose.connect(process.env.MONGO_URI);
+  const rawMongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
+  if (!rawMongoUri) {
+    console.error('[seed:admin] ERROR: MONGO_URI environment variable is missing.');
+    process.exit(1);
+  }
+  const mongoUri = rawMongoUri.trim().replace(/^["']|["']$/g, '');
+  await mongoose.connect(mongoUri);
   console.log('Connected to MongoDB');
 
   let admin = await User.findOne({ email });

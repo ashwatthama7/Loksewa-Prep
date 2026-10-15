@@ -190,7 +190,13 @@ const questionsData = [
 ];
 
 async function seedQuestions() {
-  await mongoose.connect(process.env.MONGO_URI);
+  const rawMongoUri = process.env.MONGO_URI || process.env.MONGODB_URI;
+  if (!rawMongoUri) {
+    console.error('[seed:questions] ERROR: MONGO_URI environment variable is missing.');
+    process.exit(1);
+  }
+  const mongoUri = rawMongoUri.trim().replace(/^["']|["']$/g, '');
+  await mongoose.connect(mongoUri);
   console.log('Connected to MongoDB');
 
   const existing = await Question.countDocuments();
