@@ -137,11 +137,20 @@ exports.forgotPassword = async (req, res, next) => {
       user.resetPasswordExpires = undefined;
       await user.save();
       console.error('[forgot-password] mail error:', mailErr.message);
+
+      if (process.env.NODE_ENV === 'production' && !process.env.SMTP_HOST) {
+        return res.status(503).json({
+          message: 'Password reset via email is currently unavailable (SMTP is not configured on the server). Please configure SMTP credentials or contact the administrator.',
+        });
+      }
+
       return res.status(500).json({ message: 'Failed to send reset email. Please try again later.' });
     }
 
     const payload = { message: GENERIC_MSG };
-    if (!process.env.SMTP_HOST || mailResult?.simulated) {
+
+    // STRICT SECURITY: devResetUrl is ONLY ever included in local development mode. NEVER in production!
+    if (process.env.NODE_ENV === 'development' && mailResult?.simulated) {
       payload.devResetUrl = resetUrl;
     }
 

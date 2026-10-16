@@ -30,17 +30,23 @@ function getTransporter() {
  * @param {string} resetUrl - full URL the user should visit
  */
 async function sendPasswordResetEmail(toEmail, resetUrl) {
-  // If no SMTP host is configured, do not attempt remote connection that hangs
+  // If no SMTP host is configured:
   if (!process.env.SMTP_HOST) {
+    if (process.env.NODE_ENV === 'production') {
+      console.error(`[mailer] ERROR: Password reset requested for ${toEmail}, but SMTP_HOST is not configured in production.`);
+      throw new Error('SMTP service is not configured. Real email delivery requires SMTP environment variables.');
+    }
+
+    // Local development only: log to terminal
     console.log('\n======================================================');
-    console.log('[mailer] No SMTP_HOST configured — simulated email dispatch');
-    console.log(`[mailer] Recipient: ${toEmail}`);
-    console.log(`[mailer] Reset URL:  ${resetUrl}`);
+    console.log('[mailer] [DEV ONLY] No SMTP_HOST configured — simulated email dispatch');
+    console.log(`[mailer] [DEV ONLY] Recipient: ${toEmail}`);
+    console.log(`[mailer] [DEV ONLY] Reset URL:  ${resetUrl}`);
     console.log('======================================================\n');
     return { sent: false, simulated: true, resetUrl };
   }
 
-  const from = process.env.SMTP_FROM || '"Loksewa Prep" <no-reply@loksewa-prep.local>';
+  const from = process.env.SMTP_FROM || `"Loksewa Prep" <no-reply@loksewa-prep.local>`;
   const transporter = getTransporter();
 
   const info = await transporter.sendMail({
