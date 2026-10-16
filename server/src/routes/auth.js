@@ -80,12 +80,17 @@ router.get('/google', (req, res, next) => {
 });
 
 router.get('/google/callback', (req, res, next) => {
+  const origin = req.get('origin');
+  const host = req.get('host');
+  const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+  const baseUrl = (process.env.CLIENT_URL || origin || `${protocol}://${host}` || '').replace(/\/$/, '');
+
   if (!passport.hasGoogleAuth) {
-    return res.redirect(`${process.env.CLIENT_URL || ''}/login?error=google_not_configured`);
+    return res.redirect(`${baseUrl}/login?error=google_not_configured`);
   }
   passport.authenticate('google', {
     session: false,
-    failureRedirect: `${process.env.CLIENT_URL || ''}/login?error=oauth`,
+    failureRedirect: `${baseUrl}/login?error=oauth`,
   })(req, res, (err) => {
     if (err) return next(err);
     googleCallback(req, res);

@@ -9,8 +9,8 @@ const hasGoogleAuth = !!(
 );
 
 if (hasGoogleAuth) {
-  const callbackURL = process.env.SERVER_URL
-    ? `${process.env.SERVER_URL.replace(/\/$/, '')}/api/auth/google/callback`
+  const callbackURL = (process.env.SERVER_URL || process.env.CLIENT_URL)
+    ? `${(process.env.SERVER_URL || process.env.CLIENT_URL).replace(/\/$/, '')}/api/auth/google/callback`
     : '/api/auth/google/callback';
 
   passport.use(

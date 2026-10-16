@@ -82,7 +82,11 @@ exports.logout = (req, res) => {
 exports.googleCallback = (req, res) => {
   const token = signToken(req.user._id);
   setCookieToken(res, token);
-  res.redirect(`${process.env.CLIENT_URL}/dashboard?token=${token}`);
+  const origin = req.get('origin');
+  const host = req.get('host');
+  const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+  const baseUrl = (process.env.CLIENT_URL || origin || `${protocol}://${host}` || 'http://localhost:5173').replace(/\/$/, '');
+  res.redirect(`${baseUrl}/dashboard?token=${token}`);
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
