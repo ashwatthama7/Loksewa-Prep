@@ -121,20 +121,31 @@ exports.forgotPassword = async (req, res, next) => {
     user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
     await user.save();
 
-    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${rawToken}`;
+    // Determine the base client URL dynamically so it never produces 'undefined/reset-password/...'
+    const origin = req.get('origin');
+    const host = req.get('host');
+    const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+    const baseUrl = (process.env.CLIENT_URL || origin || `${protocol}://${host}` || 'http://localhost:5173').replace(/\/$/, '');
+    const resetUrl = `${baseUrl}/reset-password/${rawToken}`;
 
+    let mailResult = { sent: false };
     try {
-      await sendPasswordResetEmail(user.email, resetUrl);
+      mailResult = await sendPasswordResetEmail(user.email, resetUrl);
     } catch (mailErr) {
       // Roll back the token so the user can try again
       user.resetPasswordToken   = undefined;
       user.resetPasswordExpires = undefined;
       await user.save();
       console.error('[forgot-password] mail error:', mailErr.message);
-      return next(new Error('Failed to send reset email. Please try again later.'));
+      return res.status(500).json({ message: 'Failed to send reset email. Please try again later.' });
     }
 
-    res.json({ message: GENERIC_MSG });
+    const payload = { message: GENERIC_MSG };
+    if (!process.env.SMTP_HOST || mailResult?.simulated) {
+      payload.devResetUrl = resetUrl;
+    }
+
+    res.json(payload);
   } catch (err) {
     next(err);
   }
