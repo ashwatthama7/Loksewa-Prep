@@ -195,7 +195,11 @@ async function seedQuestions() {
     console.error('[seed:questions] ERROR: MONGO_URI environment variable is missing.');
     process.exit(1);
   }
-  const mongoUri = rawMongoUri.trim().replace(/^["']|["']$/g, '');
+  let mongoUri = rawMongoUri.trim().replace(/^["']|["']$/g, '');
+  const protoSplit = mongoUri.split('://');
+  if (protoSplit.length === 2) {
+    mongoUri = protoSplit[0] + '://' + protoSplit[1].replace(/\/{2,}/g, '/');
+  }
   await mongoose.connect(mongoUri);
   console.log('Connected to MongoDB');
 

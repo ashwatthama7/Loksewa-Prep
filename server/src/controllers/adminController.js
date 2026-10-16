@@ -124,10 +124,10 @@ exports.bulkUpload = async (req, res, next) => {
           rows = JSON.parse(content);
           if (!Array.isArray(rows)) rows = [rows];
         } catch {
-          return res.status(400).json({ message: 'Invalid JSON file' });
+          return res.status(400).json({ message: 'Invalid JSON file format' });
         }
       } else {
-        // CSV
+        // CSV parsing
         try {
           rows = parse(content, {
             columns: true,
@@ -135,7 +135,7 @@ exports.bulkUpload = async (req, res, next) => {
             trim: true,
           });
         } catch (e) {
-          return res.status(400).json({ message: 'Invalid CSV file: ' + e.message });
+          return res.status(400).json({ message: 'Invalid CSV format: ' + e.message });
         }
       }
     } else {
@@ -145,13 +145,13 @@ exports.bulkUpload = async (req, res, next) => {
 
     const accepted = [];
     const rejected = [];
+    const rowMapping = []; // track original row number for reporting
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const rowNum = i + 1;
 
       try {
-        // Normalize CSV fields
         const section = parseInt(row.section);
         const questionText = (row.questionText || row.question_text || '').trim();
         const options = [
@@ -162,14 +162,15 @@ exports.bulkUpload = async (req, res, next) => {
         ].map((o) => (o || '').toString().trim());
 
         const correctAnswer = parseInt(row.correctAnswer ?? row.correct_answer);
+        const customId = (row.questionId || row.question_id || '').trim();
 
-        // Validation
+        // Row Validation
         if (isNaN(section) || section < 1 || section > SECTIONS_COUNT) {
-          rejected.push({ row: rowNum, reason: 'Invalid section (must be 1-10)' });
+          rejected.push({ row: rowNum, reason: 'Invalid section (must be 1–10)' });
           continue;
         }
         if (!questionText) {
-          rejected.push({ row: rowNum, reason: 'Missing questionText' });
+          rejected.push({ row: rowNum, reason: 'Missing question text' });
           continue;
         }
         if (options.some((o) => !o) || options.length !== 4) {
@@ -177,24 +178,75 @@ exports.bulkUpload = async (req, res, next) => {
           continue;
         }
         if (isNaN(correctAnswer) || correctAnswer < 0 || correctAnswer > 3) {
-          rejected.push({ row: rowNum, reason: 'correctAnswer must be 0-3' });
+          rejected.push({ row: rowNum, reason: 'correctAnswer must be index 0–3' });
           continue;
         }
 
-        accepted.push({ section, questionText, options, correctAnswer });
+        const item = { section, questionText, options, correctAnswer };
+        if (customId) item.questionId = customId;
+
+        accepted.push(item);
+        rowMapping.push(rowNum);
       } catch (e) {
         rejected.push({ row: rowNum, reason: e.message });
       }
     }
 
+    // Auto-generate questionId for all rows that don't have one
+    if (accepted.length > 0) {
+      const lastQ = await Question.findOne(
+        { questionId: { $regex: /^Q-\d+$/ } },
+        { questionId: 1 }
+      ).sort({ questionId: -1 });
+
+      let maxNum = 0;
+      if (lastQ && lastQ.questionId) {
+        const match = lastQ.questionId.match(/^Q-(\d+)$/);
+        if (match) maxNum = parseInt(match[1], 10);
+      }
+      const totalCount = await Question.countDocuments();
+      let nextSeq = Math.max(maxNum, totalCount) + 1;
+
+      for (let i = 0; i < accepted.length; i++) {
+        if (!accepted[i].questionId) {
+          accepted[i].questionId = `Q-${String(nextSeq++).padStart(4, '0')}`;
+        }
+      }
+    }
+
     let created = 0;
     if (accepted.length > 0) {
-      const docs = await Question.insertMany(accepted, { ordered: false });
-      created = docs.length;
+      try {
+        const docs = await Question.insertMany(accepted, { ordered: false });
+        created = docs.length;
+      } catch (bulkErr) {
+        // Handle partial successes with { ordered: false }
+        if (bulkErr.insertedDocs) {
+          created = bulkErr.insertedDocs.length;
+        } else if (bulkErr.result && bulkErr.result.nInserted) {
+          created = bulkErr.result.nInserted;
+        }
+
+        if (bulkErr.writeErrors && Array.isArray(bulkErr.writeErrors)) {
+          bulkErr.writeErrors.forEach((we) => {
+            const originalRow = rowMapping[we.index] || `Row #${we.index + 1}`;
+            const isDup = we.code === 11000;
+            rejected.push({
+              row: originalRow,
+              reason: isDup
+                ? 'Question or Question ID already exists in database'
+                : (we.errmsg || 'Failed to save question'),
+            });
+          });
+        } else {
+          // If unexpected error, pass to centralized handler
+          throw bulkErr;
+        }
+      }
     }
 
     res.json({
-      message: `Bulk upload complete. ${created} created, ${rejected.length} rejected.`,
+      message: `Bulk upload complete. ${created} question(s) added, ${rejected.length} rejected.`,
       created,
       rejected,
     });
