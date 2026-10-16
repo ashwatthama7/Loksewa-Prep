@@ -1,27 +1,32 @@
 const nodemailer = require('nodemailer');
 
-let _transporter = null;
-
 function getTransporter() {
-  if (_transporter) return _transporter;
+  const host = (process.env.SMTP_HOST || '').trim().toLowerCase();
+  const user = (process.env.SMTP_USER || '').trim();
+  const pass = (process.env.SMTP_PASS || '').trim().replace(/\s+/g, ''); // strip any copy-pasted spaces
+  const port = parseInt(process.env.SMTP_PORT || '465', 10);
+  const secure = process.env.SMTP_SECURE === 'true' || port === 465;
 
-  if (process.env.SMTP_HOST) {
-    _transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '587', 10),
-      secure: process.env.SMTP_SECURE === 'true' || process.env.SMTP_PORT === '465',
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-      // Strict connection timeouts to prevent hanging on blocked ports
-      connectionTimeout: 8000,
-      greetingTimeout: 8000,
-      socketTimeout: 10000,
+  if (host.includes('gmail.com') || host === 'gmail') {
+    // Nodemailer's built-in Gmail service handles direct TLS and Google endpoints reliably
+    return nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user, pass },
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 20000,
     });
   }
 
-  return _transporter;
+  return nodemailer.createTransport({
+    host: (process.env.SMTP_HOST || '').trim(),
+    port,
+    secure,
+    auth: { user, pass },
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 20000,
+  });
 }
 
 /**
@@ -30,8 +35,11 @@ function getTransporter() {
  * @param {string} resetUrl - full URL the user should visit
  */
 async function sendPasswordResetEmail(toEmail, resetUrl) {
+  const host = (process.env.SMTP_HOST || '').trim();
+  const user = (process.env.SMTP_USER || '').trim();
+
   // If no SMTP host is configured:
-  if (!process.env.SMTP_HOST) {
+  if (!host) {
     if (process.env.NODE_ENV === 'production') {
       console.error(`[mailer] ERROR: Password reset requested for ${toEmail}, but SMTP_HOST is not configured in production.`);
       throw new Error('SMTP service is not configured. Real email delivery requires SMTP environment variables.');
@@ -46,7 +54,8 @@ async function sendPasswordResetEmail(toEmail, resetUrl) {
     return { sent: false, simulated: true, resetUrl };
   }
 
-  const from = process.env.SMTP_FROM || `"Loksewa Prep" <no-reply@loksewa-prep.local>`;
+  // Ensure 'from' header defaults to authenticated user so Gmail doesn't reject domain spoofing
+  const from = (process.env.SMTP_FROM || '').trim() || `"Loksewa Prep" <${user}>`;
   const transporter = getTransporter();
 
   const info = await transporter.sendMail({

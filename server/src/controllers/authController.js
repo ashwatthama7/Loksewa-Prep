@@ -136,7 +136,7 @@ exports.forgotPassword = async (req, res, next) => {
       user.resetPasswordToken   = undefined;
       user.resetPasswordExpires = undefined;
       await user.save();
-      console.error('[forgot-password] mail error:', mailErr.message);
+      console.error('[forgot-password] mail error:', mailErr);
 
       if (process.env.NODE_ENV === 'production' && !process.env.SMTP_HOST) {
         return res.status(503).json({
@@ -144,7 +144,16 @@ exports.forgotPassword = async (req, res, next) => {
         });
       }
 
-      return res.status(500).json({ message: 'Failed to send reset email. Please try again later.' });
+      let errorMsg = 'Failed to send reset email. ';
+      if (mailErr.code === 'EAUTH' || (mailErr.response && mailErr.response.includes('535'))) {
+        errorMsg += 'Gmail Authentication Failed: Please verify that you generated a 16-character Google App Password (not your regular Gmail password) and that 2-Step Verification is active.';
+      } else if (mailErr.code === 'ETIMEDOUT' || mailErr.code === 'ESOCKET') {
+        errorMsg += 'Connection to email server timed out. Please try again or check port settings.';
+      } else if (mailErr.message) {
+        errorMsg += mailErr.message;
+      }
+
+      return res.status(500).json({ message: errorMsg });
     }
 
     const payload = { message: GENERIC_MSG };
